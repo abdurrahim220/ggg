@@ -1,4 +1,8 @@
 {
   "name": "testSharingApp",
-  "displayName": "testSharingApp"
+  "displayName": "testSharingApp",
+  "react-native-webrtc": {
+    "cameraPermission": "Allow $(PRODUCT_NAME) to capture video",
+    "microphonePermission": "Allow $(PRODUCT_NAME) to access the microphone"
+  }
 }

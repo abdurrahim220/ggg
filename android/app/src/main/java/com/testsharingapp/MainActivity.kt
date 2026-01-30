@@ -6,6 +6,10 @@ import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnable
 import com.facebook.react.defaults.DefaultReactActivityDelegate
 import android.os.Bundle
 import com.swmansion.rnscreens.fragment.restoration.RNScreensFragmentFactory
+import com.oney.WebRTCModule.WebRTCModuleOptions;
+import android.media.AudioAttributes
+import org.webrtc.audio.JavaAudioDeviceModule;
+
 
 class MainActivity : ReactActivity() {
 
@@ -25,5 +29,13 @@ class MainActivity : ReactActivity() {
    override fun onCreate(savedInstanceState: Bundle?) {
     supportFragmentManager.fragmentFactory = RNScreensFragmentFactory()
     super.onCreate(savedInstanceState)
+    val options = WebRTCModuleOptions.getInstance()
+		val audioAttributes = AudioAttributes.Builder()
+			.setUsage(AudioAttributes.USAGE_MEDIA)
+			.setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+			.build()
+		options.audioDeviceModule = JavaAudioDeviceModule.builder(this)
+			.setAudioAttributes(audioAttributes)
+			.createAudioDeviceModule()
   }
 }

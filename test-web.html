@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Socket Web Test</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .card {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        max-width: 400px;
+        margin: auto;
+      }
+      h1 {
+        font-size: 1.2em;
+        margin-top: 0;
+      }
+      .id-box {
+        background: #eee;
+        padding: 10px;
+        font-weight: bold;
+        border-radius: 5px;
+        margin: 10px 0;
+      }
+      input {
+        width: 100%;
+        padding: 10px;
+        margin: 10px 0;
+        border: 1px solid #ccc;
+        box-sizing: border-box;
+      }
+      button {
+        width: 100%;
+        padding: 10px;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      #log {
+        margin-top: 20px;
+        font-size: 0.8em;
+        color: #666;
+        height: 100px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        padding: 5px;
+        background: #fff;
+      }
+      video {
+        width: 100%;
+        background: #000;
+        border-radius: 5px;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Web Test Interface</h1>
+      <p>Your Device ID:</p>
+      <div id="deviceId" class="id-box">Connecting...</div>
+
+      <input type="text" id="remoteId" placeholder="Enter Emulator ID" />
+      <button onclick="connectToDevice()">Connect</button>
+      <button
+        onclick="shareScreen()"
+        style="background: #28a745; margin-top: 10px"
+      >
+        Share My Screen
+      </button>
+
+      <div id="videoContainer" style="display: none; margin-top: 20px">
+        <p>Remote Screen:</p>
+        <video id="remoteVideo" autoplay playsinline></video>
+      </div>
+
+      <div id="log"></div>
+    </div>
+
+    <script>
+      const logEl = document.getElementById('log');
+      const deviceIdEl = document.getElementById('deviceId');
+      const remoteVideo = document.getElementById('remoteVideo');
+      const videoContainer = document.getElementById('videoContainer');
+      const socket = new WebSocket('wss://render-websocket-ir1e.onrender.com');
+
+      let myId = 'WEB-' + Math.random().toString(36).substr(2, 6);
+      let targetId = null;
+      deviceIdEl.textContent = myId;
+
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      });
+
+      pc.onicecandidate = event => {
+        if (event.candidate && targetId) {
+          socket.send(
+            JSON.stringify({
+              type: 'ICE_CANDIDATE',
+              targetId: targetId,
+              candidate: event.candidate,
+            }),
+          );
+        }
+      };
+
+      pc.ontrack = event => {
+        log('Remote stream added');
+        videoContainer.style.display = 'block';
+        remoteVideo.srcObject = event.streams[0];
+      };
+
+      function log(msg) {
+        const div = document.createElement('div');
+        div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        logEl.appendChild(div);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      socket.onopen = () => {
+        log('Connected to server');
+        socket.send(
+          JSON.stringify({
+            type: 'REGISTER_DEVICE',
+            deviceId: myId,
+          }),
+        );
+      };
+
+      socket.onmessage = async event => {
+        const data = JSON.parse(event.data);
+        log('Received: ' + data.type);
+
+        if (data.type === 'INCOMING_REQUEST') {
+          const accepted = confirm(
+            'Incoming Request from ' + data.from + '. Accept?',
+          );
+          if (accepted) {
+            targetId = data.from;
+            socket.send(
+              JSON.stringify({
+                type: 'CONNECT_ACCEPT',
+                deviceId: myId,
+                targetId: data.from,
+              }),
+            );
+            log('Accepted connection from ' + data.from);
+          } else {
+            log('Declined connection from ' + data.from);
+          }
+        }
+
+        if (data.type === 'CONNECT_ACCEPTED') {
+          targetId = data.from;
+          log('Connection Accepted! Creating Offer...');
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.send(
+            JSON.stringify({
+              type: 'OFFER',
+              targetId: targetId,
+              offer: offer,
+            }),
+          );
+        }
+
+        if (data.type === 'OFFER') {
+          targetId = data.from;
+          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          socket.send(
+            JSON.stringify({
+              type: 'ANSWER',
+              targetId: targetId,
+              answer: answer,
+            }),
+          );
+        }
+
+        if (data.type === 'ANSWER') {
+          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+        }
+
+        if (data.type === 'ICE_CANDIDATE') {
+          await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
+      };
+
+      socket.onerror = error => {
+        log('Socket Error: ' + error.message);
+      };
+
+      async function shareScreen() {
+        try {
+          const stream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+          });
+          stream.getTracks().forEach(track => pc.addTrack(track, stream));
+          log('Started sharing screen');
+        } catch (e) {
+          log('Error sharing screen: ' + e.message);
+        }
+      }
+
+      function connectToDevice() {
+        const id = document.getElementById('remoteId').value;
+        if (!id) return alert('Enter a Remote ID');
+        targetId = id;
+        socket.send(
+          JSON.stringify({
+            type: 'CONNECT_REQUEST',
+            deviceId: myId,
+            targetId: targetId,
+          }),
+        );
+        log('Sent connection request to ' + targetId);
+      }
+    </script>
+  </body>
+</html>
