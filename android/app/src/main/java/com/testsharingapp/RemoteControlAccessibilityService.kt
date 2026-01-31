@@ -42,7 +42,8 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         path.moveTo(x, y)
         
         val gestureBuilder = GestureDescription.Builder()
-        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 50))
+        // Increase duration to 150ms for more reliable gesture recognition
+        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 150))
         
         dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription?) {
